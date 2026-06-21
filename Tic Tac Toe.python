@@ -1,0 +1,177 @@
+"""
+╔══════════════════════════════════════╗
+║        TIC TAC TOE - Python          ║
+║         2 Players / vs Computer      ║
+╚══════════════════════════════════════╝
+"""
+
+import random
+import os
+
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def print_board(board):
+    print("\n")
+    print("  TIC TAC TOE")
+    print("  ───────────────")
+    for i in range(3):
+        row = board[i*3 : i*3+3]
+        display = []
+        for cell in row:
+            if cell == 'X':
+                display.append(' X ')
+            elif cell == 'O':
+                display.append(' O ')
+            else:
+                display.append(f' {cell} ')
+        print("  │" + "│".join(display) + "│")
+        if i < 2:
+            print("  ├───┼───┼───┤")
+    print("  ───────────────")
+    print()
+
+def print_reference():
+    print("  Position Guide:")
+    print("  ┌───┬───┬───┐")
+    print("  │ 1 │ 2 │ 3 │")
+    print("  ├───┼───┼───┤")
+    print("  │ 4 │ 5 │ 6 │")
+    print("  ├───┼───┼───┤")
+    print("  │ 7 │ 8 │ 9 │")
+    print("  └───┴───┴───┘")
+    print()
+
+def check_winner(board, player):
+    wins = [
+        [0,1,2], [3,4,5], [6,7,8],  # rows
+        [0,3,6], [1,4,7], [2,5,8],  # cols
+        [0,4,8], [2,4,6]             # diagonals
+    ]
+    for combo in wins:
+        if all(board[i] == player for i in combo):
+            return True
+    return False
+
+def is_draw(board):
+    return all(cell in ['X', 'O'] for cell in board)
+
+def get_player_move(board, player):
+    while True:
+        try:
+            move = int(input(f"  Player {player}, enter position (1-9): "))
+            if 1 <= move <= 9 and board[move-1] not in ['X', 'O']:
+                return move - 1
+            elif board[move-1] in ['X', 'O']:
+                print("  ❌ Cell already taken! Try again.")
+            else:
+                print("  ❌ Enter number between 1-9!")
+        except ValueError:
+            print("  ❌ Invalid input! Enter a number.")
+
+def computer_move(board, difficulty):
+    empty = [i for i, cell in enumerate(board) if cell not in ['X', 'O']]
+    
+    if difficulty == 'hard':
+        # Try to win
+        for i in empty:
+            board[i] = 'O'
+            if check_winner(board, 'O'):
+                board[i] = str(i+1)
+                return i
+            board[i] = str(i+1)
+        
+        # Block player
+        for i in empty:
+            board[i] = 'X'
+            if check_winner(board, 'X'):
+                board[i] = str(i+1)
+                return i
+            board[i] = str(i+1)
+        
+        # Take center
+        if 4 in empty:
+            return 4
+        
+        # Take corners
+        corners = [i for i in [0,2,6,8] if i in empty]
+        if corners:
+            return random.choice(corners)
+    
+    # Random move (easy)
+    return random.choice(empty)
+
+def play_game():
+    clear()
+    print("\n" + "═"*40)
+    print("      🎮  TIC TAC TOE  🎮")
+    print("═"*40)
+    print()
+    print("  Game Mode:")
+    print("  1. Player vs Player")
+    print("  2. Player vs Computer")
+    print()
+    
+    while True:
+        mode = input("  Choose mode (1 or 2): ").strip()
+        if mode in ['1', '2']:
+            break
+        print("  ❌ Enter 1 or 2!")
+    
+    difficulty = 'easy'
+    if mode == '2':
+        print("\n  Difficulty:")
+        print("  1. Easy")
+        print("  2. Hard")
+        diff_choice = input("  Choose difficulty (1 or 2): ").strip()
+        difficulty = 'hard' if diff_choice == '2' else 'easy'
+    
+    board = [str(i+1) for i in range(9)]
+    current = 'X'
+    
+    while True:
+        clear()
+        print_board(board)
+        print_reference()
+        
+        if check_winner(board, 'X'):
+            if mode == '1':
+                print("  🎉 Player X WINS! Congratulations!")
+            else:
+                print("  🎉 You WIN! Well played!")
+            break
+        elif check_winner(board, 'O'):
+            if mode == '1':
+                print("  🎉 Player O WINS! Congratulations!")
+            else:
+                print("  😅 Computer WINS! Better luck next time!")
+            break
+        elif is_draw(board):
+            print("  🤝 It's a DRAW! Good game!")
+            break
+        
+        if current == 'X':
+            move = get_player_move(board, current)
+            board[move] = 'X'
+            current = 'O'
+        else:
+            if mode == '2':
+                print("  🤖 Computer is thinking...")
+                import time; time.sleep(0.8)
+                move = computer_move(board, difficulty)
+                board[move] = 'O'
+                current = 'X'
+            else:
+                move = get_player_move(board, current)
+                board[move] = 'O'
+                current = 'X'
+    
+    print()
+    play_again = input("  Play again? (y/n): ").strip().lower()
+    if play_again == 'y':
+        play_game()
+    else:
+        print("\n  Thanks for playing! Goodbye! 👋\n")
+
+if __name__ == "__main__":
+    play_game()
