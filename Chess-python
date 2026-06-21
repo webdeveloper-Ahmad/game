@@ -1,0 +1,453 @@
+"""
+╔══════════════════════════════════════╗
+║          CHESS - Python              ║
+║       Full 2-Player Chess Game       ║
+╚══════════════════════════════════════╝
+"""
+
+import os
+import copy
+
+# Piece symbols
+PIECES = {
+    'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+    'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟',
+}
+
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def init_board():
+    board = [[None]*8 for _ in range(8)]
+    # Black pieces
+    order = ['bR','bN','bB','bQ','bK','bB','bN','bR']
+    for c in range(8):
+        board[0][c] = order[c]
+        board[1][c] = 'bP'
+    # White pieces
+    order = ['wR','wN','wB','wQ','wK','wB','wN','wR']
+    for c in range(8):
+        board[7][c] = order[c]
+        board[6][c] = 'wP'
+    return board
+
+def print_board(board, selected=None, valid_moves=[], last_move=None, flipped=False):
+    print()
+    print("    ┌───┬───┬───┬───┬───┬───┬───┬───┐")
+    
+    rows = range(8) if not flipped else range(7, -1, -1)
+    cols = range(8) if not flipped else range(7, -1, -1)
+    
+    for r in rows:
+        row_num = 8 - r if not flipped else r + 1
+        print(f"  {row_num} │", end="")
+        for c in cols:
+            piece = board[r][c]
+            bg = ""
+            
+            if selected and (r, c) == selected:
+                bg = "\033[43m"  # Yellow bg for selected
+            elif (r, c) in valid_moves:
+                bg = "\033[42m"  # Green bg for valid moves
+            elif last_move and (r, c) in last_move:
+                bg = "\033[44m"  # Blue bg for last move
+            
+            symbol = PIECES.get(piece, ' ') if piece else ' '
+            print(f"{bg} {symbol} \033[0m│", end="")
+        print()
+        if r < 7:
+            print("    ├───┼───┼───┼───┼───┼───┼───┼───┤")
+    
+    print("    └───┴───┴───┴───┴───┴───┴───┴───┘")
+    if not flipped:
+        print("      a   b   c   d   e   f   g   h  ")
+    else:
+        print("      h   g   f   e   d   c   b   a  ")
+    print()
+
+def parse_pos(s):
+    """Convert 'e2' -> (row, col)"""
+    s = s.strip().lower()
+    if len(s) != 2:
+        return None
+    col = ord(s[0]) - ord('a')
+    row = 8 - int(s[1])
+    if 0 <= row <= 7 and 0 <= col <= 7:
+        return (row, col)
+    return None
+
+def pos_to_str(r, c):
+    return chr(ord('a') + c) + str(8 - r)
+
+def color(piece):
+    if piece is None: return None
+    return piece[0]
+
+def get_pawn_moves(board, r, c, piece, en_passant):
+    moves = []
+    direction = -1 if color(piece) == 'w' else 1
+    start_row = 6 if color(piece) == 'w' else 1
+    
+    # Move forward
+    nr = r + direction
+    if 0 <= nr <= 7 and board[nr][c] is None:
+        moves.append((nr, c))
+        # Double move from start
+        if r == start_row and board[r + 2*direction][c] is None:
+            moves.append((r + 2*direction, c))
+    
+    # Captures
+    for dc in [-1, 1]:
+        nc = c + dc
+        if 0 <= nr <= 7 and 0 <= nc <= 7:
+            target = board[nr][nc]
+            if target and color(target) != color(piece):
+                moves.append((nr, nc))
+            # En passant
+            if en_passant and (nr, nc) == en_passant:
+                moves.append((nr, nc))
+    
+    return moves
+
+def get_rook_moves(board, r, c, piece):
+    moves = []
+    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+        nr, nc = r+dr, c+dc
+        while 0 <= nr <= 7 and 0 <= nc <= 7:
+            if board[nr][nc] is None:
+                moves.append((nr, nc))
+            elif color(board[nr][nc]) != color(piece):
+                moves.append((nr, nc))
+                break
+            else:
+                break
+            nr += dr; nc += dc
+    return moves
+
+def get_bishop_moves(board, r, c, piece):
+    moves = []
+    for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+        nr, nc = r+dr, c+dc
+        while 0 <= nr <= 7 and 0 <= nc <= 7:
+            if board[nr][nc] is None:
+                moves.append((nr, nc))
+            elif color(board[nr][nc]) != color(piece):
+                moves.append((nr, nc))
+                break
+            else:
+                break
+            nr += dr; nc += dc
+    return moves
+
+def get_knight_moves(board, r, c, piece):
+    moves = []
+    for dr, dc in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+        nr, nc = r+dr, c+dc
+        if 0 <= nr <= 7 and 0 <= nc <= 7:
+            if board[nr][nc] is None or color(board[nr][nc]) != color(piece):
+                moves.append((nr, nc))
+    return moves
+
+def get_king_moves(board, r, c, piece):
+    moves = []
+    for dr in [-1,0,1]:
+        for dc in [-1,0,1]:
+            if dr == 0 and dc == 0: continue
+            nr, nc = r+dr, c+dc
+            if 0 <= nr <= 7 and 0 <= nc <= 7:
+                if board[nr][nc] is None or color(board[nr][nc]) != color(piece):
+                    moves.append((nr, nc))
+    return moves
+
+def get_raw_moves(board, r, c, en_passant=None):
+    piece = board[r][c]
+    if piece is None: return []
+    p = piece[1]
+    if p == 'P': return get_pawn_moves(board, r, c, piece, en_passant)
+    if p == 'R': return get_rook_moves(board, r, c, piece)
+    if p == 'B': return get_bishop_moves(board, r, c, piece)
+    if p == 'N': return get_knight_moves(board, r, c, piece)
+    if p == 'Q': return get_rook_moves(board, r, c, piece) + get_bishop_moves(board, r, c, piece)
+    if p == 'K': return get_king_moves(board, r, c, piece)
+    return []
+
+def find_king(board, clr):
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] == clr + 'K':
+                return (r, c)
+    return None
+
+def is_in_check(board, clr, en_passant=None):
+    king_pos = find_king(board, clr)
+    if not king_pos: return True
+    opp = 'b' if clr == 'w' else 'w'
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] and color(board[r][c]) == opp:
+                if king_pos in get_raw_moves(board, r, c, en_passant):
+                    return True
+    return False
+
+def get_legal_moves(board, r, c, en_passant=None, castling=None):
+    piece = board[r][c]
+    if piece is None: return []
+    clr = color(piece)
+    raw = get_raw_moves(board, r, c, en_passant)
+    legal = []
+    
+    for (nr, nc) in raw:
+        test = copy.deepcopy(board)
+        # Handle en passant capture
+        if piece[1] == 'P' and en_passant and (nr, nc) == en_passant:
+            cap_r = r  # captured pawn is on same row as moving pawn
+            test[cap_r][nc] = None
+        test[nr][nc] = piece
+        test[r][c] = None
+        if not is_in_check(test, clr):
+            legal.append((nr, nc))
+    
+    # Castling
+    if piece[1] == 'K' and castling:
+        if not is_in_check(board, clr):
+            row = 7 if clr == 'w' else 0
+            if r == row and c == 4:
+                # Kingside
+                ks_key = clr + 'K'
+                if castling.get(ks_key, False):
+                    if board[row][5] is None and board[row][6] is None:
+                        test1 = copy.deepcopy(board); test1[row][5] = piece; test1[row][4] = None
+                        test2 = copy.deepcopy(board); test2[row][6] = piece; test2[row][4] = None
+                        if not is_in_check(test1, clr) and not is_in_check(test2, clr):
+                            legal.append((row, 6))
+                # Queenside
+                qs_key = clr + 'Q'
+                if castling.get(qs_key, False):
+                    if board[row][3] is None and board[row][2] is None and board[row][1] is None:
+                        test1 = copy.deepcopy(board); test1[row][3] = piece; test1[row][4] = None
+                        test2 = copy.deepcopy(board); test2[row][2] = piece; test2[row][4] = None
+                        if not is_in_check(test1, clr) and not is_in_check(test2, clr):
+                            legal.append((row, 2))
+    
+    return legal
+
+def has_any_moves(board, clr, en_passant=None, castling=None):
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] and color(board[r][c]) == clr:
+                if get_legal_moves(board, r, c, en_passant, castling):
+                    return True
+    return False
+
+def promote_pawn(clr):
+    print(f"\n  🎉 Pawn Promotion! Choose piece:")
+    print("  Q - Queen  |  R - Rook  |  B - Bishop  |  N - Knight")
+    while True:
+        choice = input("  Your choice: ").strip().upper()
+        if choice in ['Q', 'R', 'B', 'N']:
+            return clr + choice
+        print("  ❌ Enter Q, R, B, or N")
+
+def play_chess():
+    board = init_board()
+    turn = 'w'
+    en_passant = None
+    castling = {'wK': True, 'wQ': True, 'bK': True, 'bQ': True}
+    move_history = []
+    last_move = []
+    selected = None
+    valid_moves = []
+    captured = {'w': [], 'b': []}
+    
+    clear()
+    print("\n" + "═"*44)
+    print("         ♟  CHESS - Python ♙")
+    print("═"*44)
+    print()
+    print("  How to play:")
+    print("  • Type position to select piece: e.g. 'e2'")
+    print("  • Type destination to move:      e.g. 'e4'")
+    print("  • Or type full move directly:    e.g. 'e2 e4'")
+    print("  • Type 'resign' to resign")
+    print("  • Type 'draw' to offer draw")
+    print()
+    input("  Press ENTER to start... ")
+    
+    while True:
+        clear()
+        flipped = (turn == 'b')
+        
+        # Print captured pieces
+        print(f"  ♟ Black captures: {' '.join(PIECES.get(p, p) for p in captured['b']) or '—'}")
+        print()
+        
+        print_board(board, selected, valid_moves, last_move, flipped=False)
+        
+        print(f"  ♙ White captures: {' '.join(PIECES.get(p, p) for p in captured['w']) or '—'}")
+        print()
+        
+        player = "White ♔" if turn == 'w' else "Black ♚"
+        in_check = is_in_check(board, turn, en_passant)
+        
+        if in_check:
+            print(f"  ⚠️  {player} is in CHECK!")
+        
+        if not has_any_moves(board, turn, en_passant, castling):
+            if in_check:
+                winner = "Black ♚" if turn == 'w' else "White ♔"
+                print(f"\n  ♟  CHECKMATE! {winner} WINS! 🎉")
+            else:
+                print(f"\n  🤝 STALEMATE! It's a Draw!")
+            print()
+            input("  Press ENTER to exit...")
+            break
+        
+        print(f"  Turn: {player}")
+        
+        if selected:
+            print(f"  Selected: {pos_to_str(*selected)} | Valid moves: {', '.join(pos_to_str(*m) for m in valid_moves) or 'None'}")
+        
+        cmd = input("\n  Enter move (e.g. 'e2 e4' or 'e2'): ").strip().lower()
+        
+        if cmd == 'resign':
+            winner = "Black ♚" if turn == 'w' else "White ♔"
+            print(f"\n  🏳️  {player} resigns. {winner} wins!")
+            input("  Press ENTER to exit...")
+            break
+        
+        if cmd == 'draw':
+            print(f"\n  🤝 Draw offered by {player}.")
+            accept = input("  Other player, accept draw? (y/n): ").strip().lower()
+            if accept == 'y':
+                print("  🤝 Game drawn by agreement!")
+                input("  Press ENTER to exit...")
+                break
+            continue
+        
+        parts = cmd.split()
+        
+        if len(parts) == 1:
+            pos = parse_pos(parts[0])
+            if pos is None:
+                print("  ❌ Invalid position! Use format like 'e2'")
+                input("  Press ENTER...")
+                continue
+            r, c = pos
+            piece = board[r][c]
+            if piece is None or color(piece) != turn:
+                print("  ❌ No valid piece there!")
+                selected = None
+                valid_moves = []
+                input("  Press ENTER...")
+                continue
+            
+            if selected == pos:
+                selected = None
+                valid_moves = []
+            else:
+                selected = pos
+                valid_moves = get_legal_moves(board, r, c, en_passant, castling)
+                if not valid_moves:
+                    print(f"  ❌ Piece at {parts[0]} has no legal moves!")
+                    selected = None
+                    input("  Press ENTER...")
+            continue
+        
+        elif len(parts) == 2:
+            from_pos = parse_pos(parts[0])
+            to_pos = parse_pos(parts[1])
+            
+            if from_pos is None or to_pos is None:
+                print("  ❌ Invalid format! Use 'e2 e4'")
+                input("  Press ENTER...")
+                continue
+            
+            fr, fc = from_pos
+            tr, tc = to_pos
+            piece = board[fr][fc]
+            
+            if piece is None or color(piece) != turn:
+                print("  ❌ Not your piece!")
+                input("  Press ENTER...")
+                continue
+            
+            legal = get_legal_moves(board, fr, fc, en_passant, castling)
+            if (tr, tc) not in legal:
+                print("  ❌ Illegal move!")
+                input("  Press ENTER...")
+                continue
+            
+            # Execute move
+            new_ep = None
+            
+            # En passant capture
+            if piece[1] == 'P' and en_passant and (tr, tc) == en_passant:
+                captured[turn].append(board[fr][tc])
+                board[fr][tc] = None
+            
+            # Double pawn push -> set en passant
+            if piece[1] == 'P' and abs(tr - fr) == 2:
+                new_ep = ((fr + tr) // 2, fc)
+            
+            # Castling move
+            if piece[1] == 'K' and abs(tc - fc) == 2:
+                if tc == 6:  # Kingside
+                    board[fr][5] = board[fr][7]
+                    board[fr][7] = None
+                else:  # Queenside
+                    board[fr][3] = board[fr][0]
+                    board[fr][0] = None
+            
+            # Capture
+            if board[tr][tc]:
+                captured[turn].append(board[tr][tc])
+            
+            board[tr][tc] = piece
+            board[fr][fc] = None
+            
+            # Update castling rights
+            if piece == 'wK': castling['wK'] = castling['wQ'] = False
+            if piece == 'bK': castling['bK'] = castling['bQ'] = False
+            if piece == 'wR' and fr == 7 and fc == 0: castling['wQ'] = False
+            if piece == 'wR' and fr == 7 and fc == 7: castling['wK'] = False
+            if piece == 'bR' and fr == 0 and fc == 0: castling['bQ'] = False
+            if piece == 'bR' and fr == 0 and fc == 7: castling['bK'] = False
+            
+            # Pawn promotion
+            if piece == 'wP' and tr == 0:
+                board[tr][tc] = promote_pawn('w')
+            if piece == 'bP' and tr == 7:
+                board[tr][tc] = promote_pawn('b')
+            
+            en_passant = new_ep
+            last_move = [from_pos, to_pos]
+            move_history.append(f"{parts[0]}-{parts[1]}")
+            selected = None
+            valid_moves = []
+            turn = 'b' if turn == 'w' else 'w'
+        
+        else:
+            print("  ❌ Invalid command!")
+            input("  Press ENTER...")
+
+def main():
+    while True:
+        clear()
+        print("\n" + "═"*44)
+        print("         ♟  CHESS - Python ♙")
+        print("═"*44)
+        print()
+        print("  1. New Game")
+        print("  2. Quit")
+        print()
+        choice = input("  Choose: ").strip()
+        if choice == '1':
+            play_chess()
+        elif choice == '2':
+            print("\n  Thanks for playing! Goodbye! 👋\n")
+            break
+        else:
+            print("  Enter 1 or 2")
+
+if __name__ == "__main__":
+    main()
